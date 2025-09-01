@@ -39,7 +39,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "⚖️ Hukuk Asistanı aktif ve çalışıyor!"}
 # -------------------
 # Yardımcı Fonksiyonlar
 # -------------------
