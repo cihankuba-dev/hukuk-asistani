@@ -8,3 +8,4 @@ openpyxl
 faiss-cpu
 python-pptx
 lxml
+PyPDF2
