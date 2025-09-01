@@ -86,10 +86,10 @@ def embed_text(text):
     )
     return response.data[0].embedding
 
+# 🔹 Google Drive servis bağlantısı
 def get_drive_service():
-    creds_dict = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
-    creds = service_account.Credentials.from_service_account_info(
-        creds_dict,
+    creds = service_account.Credentials.from_service_account_file(
+        "credentials.json",  # Render Secret Files içine eklediğin JSON dosyası
         scopes=["https://www.googleapis.com/auth/drive.readonly"],
     )
     return build("drive", "v3", credentials=creds)
@@ -124,31 +124,33 @@ async def ingest_drive(folder_id: str = Form(...)):
     global index, metadata
     service = get_drive_service()
 
+    # Klasördeki dosyaları listele
     results = service.files().list(
         q=f"'{folder_id}' in parents and trashed=false",
         fields="files(id, name, mimeType)"
     ).execute()
-    files = results.get("files", [])
 
+    files = results.get("files", [])
     count = 0
-    for f in files:
-        fname = f["name"]
+
+    for file in files:
+        fname = file["name"]
         ext = fname.split(".")[-1].lower()
-        if ext not in ["pdf", "docx", "xlsx", "pptx", "txt", "rtf", "md", "udf"]:
+
+        if ext not in ["pdf", "docx", "xlsx", "pptx", "txt", "rtf", "md"]:
             continue
 
-        # indir
-        request = service.files().get_media(fileId=f["id"])
-        tmp_path = os.path.join(tempfile.gettempdir(), fname)
-        with open(tmp_path, "wb") as fh:
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while done is False:
-                status, done = downloader.next_chunk()
+        # Dosyayı indir
+        request = service.files().get_media(fileId=file["id"])
+        temp_path = os.path.join(tempfile.gettempdir(), fname)
+        with open(temp_path, "wb") as f:
+            f.write(request.execute())
 
-        text = extract_text_from_path(tmp_path, fname)
-        os.remove(tmp_path)
+        # Metin çıkar
+        text = extract_text_from_path(temp_path, fname)
+        os.remove(temp_path)
 
+        # Vektör ekle
         chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
         for chunk in chunks:
             vector = embed_text(chunk)
@@ -158,6 +160,7 @@ async def ingest_drive(folder_id: str = Form(...)):
 
     with open(INDEX_FILE, "wb") as f:
         pickle.dump((index, metadata), f)
+
     return {"status": "ok", "files_ingested": count, "chunks_total": len(metadata)}
 
 @app.post("/petition")
