@@ -5,3 +5,4 @@ python-multipart
 python-docx
 pdfminer.six
 openpyxl
+faiss-cpu
