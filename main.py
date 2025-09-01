@@ -1,5 +1,4 @@
 import os
-import io
 import tempfile
 import faiss
 import pickle
@@ -9,7 +8,7 @@ from openai import OpenAI
 from PyPDF2 import PdfReader
 import docx
 import openpyxl
-import textract
+from pptx import Presentation
 
 # OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -48,20 +47,26 @@ def extract_text(file: UploadFile):
         if ext == "pdf":
             reader = PdfReader(tmp_path)
             text = "\n".join([page.extract_text() or "" for page in reader.pages])
-        elif ext in ["docx"]:
+        elif ext == "docx":
             doc = docx.Document(tmp_path)
             text = "\n".join([p.text for p in doc.paragraphs])
-        elif ext in ["xlsx"]:
+        elif ext == "xlsx":
             wb = openpyxl.load_workbook(tmp_path)
             for sheet in wb.sheetnames:
                 ws = wb[sheet]
                 for row in ws.iter_rows(values_only=True):
                     text += " ".join([str(cell) for cell in row if cell]) + "\n"
+        elif ext == "pptx":
+            prs = Presentation(tmp_path)
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if hasattr(shape, "text"):
+                        text += shape.text + "\n"
         elif ext in ["txt", "rtf", "md"]:
-    with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
-        text = f.read()
-else:
-    text = ""
+            with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
+                text = f.read()
+        else:
+            text = ""
     finally:
         os.remove(tmp_path)
     return text.strip()
