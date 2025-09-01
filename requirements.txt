@@ -4,4 +4,6 @@ openai
 python-multipart
 python-docx
 pdfminer.six
+python-pptx
 python-dotenv
+faiss-cpu
