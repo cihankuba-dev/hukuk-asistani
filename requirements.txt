@@ -9,3 +9,4 @@ faiss-cpu
 python-pptx
 lxml
 PyPDF2
+pydrive2
