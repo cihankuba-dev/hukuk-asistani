@@ -57,8 +57,11 @@ def extract_text(file: UploadFile):
                 ws = wb[sheet]
                 for row in ws.iter_rows(values_only=True):
                     text += " ".join([str(cell) for cell in row if cell]) + "\n"
-        else:
-            text = textract.process(tmp_path).decode("utf-8")
+        elif ext in ["txt", "rtf", "md"]:
+    with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
+        text = f.read()
+else:
+    text = ""
     finally:
         os.remove(tmp_path)
     return text.strip()
