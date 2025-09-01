@@ -3,9 +3,8 @@ uvicorn
 openai
 python-multipart
 python-docx
-PyPDF2
 pdfminer.six
 openpyxl
-python-pptx
 faiss-cpu
+python-pptx
 lxml
