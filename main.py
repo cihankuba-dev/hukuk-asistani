@@ -32,6 +32,10 @@ else:
 
 # FastAPI
 app = FastAPI(title="⚖️ Hukuk Asistanı")
+{
+  "status": "ok",
+  "message": "⚖️ Hukuk Asistanı aktif ve çalışıyor!"
+}
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
