@@ -33,8 +33,16 @@
     <div id="summaryOutput"></div>
   </div>
 
+  <!-- Klasör Bağlantısı -->
+  <div class="box">
+    <h2>📂 iCloud Klasörünü Tara</h2>
+    <input type="file" id="folderInput" webkitdirectory directory multiple />
+    <button onclick="uploadFolder()">Klasörü Tara</button>
+    <div id="folderOutput"></div>
+  </div>
+
   <script>
-    const BASE_URL = "https://hukuk-asistani.onrender.com";
+    const BASE_URL = "https://hukuk-asistani.onrender.com"; // Backend adresin
 
     async function createPetition() {
       let prompt = document.getElementById("petitionInput").value;
@@ -57,6 +65,26 @@
       });
       let data = await res.json();
       document.getElementById("summaryOutput").innerHTML = `<div id="output">${data.summary}</div>`;
+    }
+
+    async function uploadFolder() {
+      let files = document.getElementById("folderInput").files;
+      let results = [];
+
+      for (let file of files) {
+        let formData = new FormData();
+        formData.append("file", file);
+
+        let res = await fetch(`${BASE_URL}/summarize`, {
+          method: "POST",
+          body: formData
+        });
+        let data = await res.json();
+        results.push(`📄 ${file.name}\n${data.summary}\n`);
+      }
+
+      document.getElementById("folderOutput").innerHTML =
+        `<div id="output">${results.join("\n\n")}</div>`;
     }
   </script>
 </body>
