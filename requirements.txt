@@ -8,3 +8,4 @@ pdfminer.six
 openpyxl
 python-pptx
 faiss-cpu
+lxml
