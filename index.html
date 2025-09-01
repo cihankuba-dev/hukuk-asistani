@@ -1,90 +1,102 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>⚖️ Hukuk Asistanı</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f9f9f9; margin: 0; padding: 20px; }
-    h1 { color: #1F3B73; text-align: center; }
-    .box { background: white; padding: 20px; margin: 15px auto; border-radius: 8px; max-width: 600px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-    button { background: #1F3B73; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; }
-    button:hover { background: #304f9c; }
-    textarea, input[type="file"] { width: 100%; margin: 10px 0; padding: 10px; }
-    #output { white-space: pre-wrap; background: #eef; padding: 15px; border-radius: 6px; margin-top: 10px; }
+    body { font-family: Arial, background:#f9f9f9; margin:0; padding:20px; }
+    h1 { color:#1F3B73; text-align:center; }
+    .box { background:#fff; padding:16px; margin:15px auto; border-radius:8px; max-width:700px; box-shadow:0 2px 6px rgba(0,0,0,.08); }
+    button { background:#1F3B73; color:#fff; padding:10px 14px; border:none; border-radius:6px; cursor:pointer; }
+    button:hover { background:#304f9c; }
+    textarea, input[type="file"], input[type="text"] { width:100%; margin-top:10px; padding:10px; }
+    #output { white-space:pre-wrap; background:#eef; padding:14px; border-radius:6px; margin-top:10px; }
   </style>
 </head>
 <body>
   <h1>⚖️ Hukuk Asistanı</h1>
 
-  <!-- Dilekçe Hazırlama -->
   <div class="box">
-    <h2>📜 Dilekçe Hazırla</h2>
+    <h2>📂 iCloud Klasörünü Yükle (Öğrenme)</h2>
+    <input type="file" id="ingestInput" webkitdirectory directory multiple />
+    <button onclick="ingest()">Klasörü Yükle (Ingest)</button>
+    <div id="ingestOut"></div>
+  </div>
+
+  <div class="box">
+    <h2>📜 Serbest Dilekçe</h2>
     <textarea id="petitionInput" rows="3" placeholder="Örn: Tutuklama itiraz dilekçesi hazırla"></textarea>
     <button onclick="createPetition()">Hazırla</button>
-    <div id="petitionOutput"></div>
+    <div id="petitionOut"></div>
   </div>
 
-  <!-- Belge Özetleme -->
   <div class="box">
-    <h2>📂 Belge Yükle & Özetle</h2>
-    <input type="file" id="fileInput" />
-    <button onclick="summarizeFile()">Özet Çıkar</button>
-    <div id="summaryOutput"></div>
+    <h2>📂 Belge Yükle → ⚖️ Dilekçe</h2>
+    <input type="file" id="fileInput"/>
+    <button onclick="draftFromFile()">Dilekçe Oluştur</button>
+    <div id="draftOut"></div>
   </div>
 
-  <!-- Klasör Bağlantısı -->
   <div class="box">
-    <h2>📂 iCloud Klasörünü Tara</h2>
-    <input type="file" id="folderInput" webkitdirectory directory multiple />
-    <button onclick="uploadFolder()">Klasörü Tara</button>
-    <div id="folderOutput"></div>
+    <h2>🔍 Mevzuat & İçtihat Ara</h2>
+    <input type="text" id="lawQuery" placeholder="Örn: CMK 100 tutuklama"/>
+    <button onclick="searchLaw()">Ara</button>
+    <div id="lawOut"></div>
+  </div>
+
+  <div class="box">
+    <h2>📑 Arşivde Ara (RAG)</h2>
+    <input type="text" id="ragQuery" placeholder="Örn: haksız tahrik, takdiri indirim"/>
+    <button onclick="ragSearch()">Arşivde Ara</button>
+    <div id="ragOut"></div>
   </div>
 
   <script>
-    const BASE_URL = "https://hukuk-asistani.onrender.com"; // Backend adresin
+    const BASE_URL = "https://hukuk-asistani.onrender.com";
+
+    async function ingest() {
+      const files = document.getElementById("ingestInput").files;
+      if (!files.length) return alert("Klasör seç.");
+      const form = new FormData();
+      for (const f of files) form.append("files", f);
+      const res = await fetch(`${BASE_URL}/ingest`, { method:"POST", body: form });
+      const data = await res.json();
+      document.getElementById("ingestOut").innerHTML = `<div id="output">${JSON.stringify(data,null,2)}</div>`;
+    }
 
     async function createPetition() {
-      let prompt = document.getElementById("petitionInput").value;
-      let res = await fetch(`${BASE_URL}/petition`, {
-        method: "POST",
-        body: new URLSearchParams({ prompt }),
-      });
-      let data = await res.json();
-      document.getElementById("petitionOutput").innerHTML = `<div id="output">${data.draft}</div>`;
+      const prompt = document.getElementById("petitionInput").value;
+      if (!prompt) return alert("Ne tür dilekçe istediğini yaz.");
+      const res = await fetch(`${BASE_URL}/petition`, { method:"POST", body: new URLSearchParams({ prompt }) });
+      const data = await res.json();
+      document.getElementById("petitionOut").innerHTML = `<div id="output">${data.draft}</div>`;
     }
 
-    async function summarizeFile() {
-      let file = document.getElementById("fileInput").files[0];
-      let formData = new FormData();
-      formData.append("file", file);
-
-      let res = await fetch(`${BASE_URL}/summarize`, {
-        method: "POST",
-        body: formData
-      });
-      let data = await res.json();
-      document.getElementById("summaryOutput").innerHTML = `<div id="output">${data.summary}</div>`;
+    async function draftFromFile() {
+      const f = document.getElementById("fileInput").files[0];
+      if (!f) return alert("Bir dosya seç.");
+      const form = new FormData();
+      form.append("file", f);
+      const res = await fetch(`${BASE_URL}/draft_from_file`, { method:"POST", body: form });
+      const data = await res.json();
+      document.getElementById("draftOut").innerHTML = `<div id="output">${data.draft}</div>`;
     }
 
-    async function uploadFolder() {
-      let files = document.getElementById("folderInput").files;
-      let results = [];
+    async function searchLaw() {
+      const q = document.getElementById("lawQuery").value;
+      if (!q) return alert("Sorgu yaz.");
+      const res = await fetch(`${BASE_URL}/law_search?query=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      document.getElementById("lawOut").innerHTML = `<div id="output">${data.results}</div>`;
+    }
 
-      for (let file of files) {
-        let formData = new FormData();
-        formData.append("file", file);
-
-        let res = await fetch(`${BASE_URL}/summarize`, {
-          method: "POST",
-          body: formData
-        });
-        let data = await res.json();
-        results.push(`📄 ${file.name}\n${data.summary}\n`);
-      }
-
-      document.getElementById("folderOutput").innerHTML =
-        `<div id="output">${results.join("\n\n")}</div>`;
+    async function ragSearch() {
+      const q = document.getElementById("ragQuery").value;
+      if (!q) return alert("Sorgu yaz.");
+      const res = await fetch(`${BASE_URL}/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      document.getElementById("ragOut").innerHTML = `<div id="output">${JSON.stringify(data.results,null,2)}</div>`;
     }
   </script>
 </body>
