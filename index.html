@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚖️ Hukuk Asistanı</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f9f9f9; margin: 0; padding: 20px; }
+    h1 { color: #1F3B73; text-align: center; }
+    .box { background: white; padding: 20px; margin: 15px auto; border-radius: 8px; max-width: 600px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    button { background: #1F3B73; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; }
+    button:hover { background: #304f9c; }
+    textarea, input[type="file"] { width: 100%; margin: 10px 0; padding: 10px; }
+    #output { white-space: pre-wrap; background: #eef; padding: 15px; border-radius: 6px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>⚖️ Hukuk Asistanı</h1>
+
+  <!-- Dilekçe Hazırlama -->
+  <div class="box">
+    <h2>📜 Dilekçe Hazırla</h2>
+    <textarea id="petitionInput" rows="3" placeholder="Örn: Tutuklama itiraz dilekçesi hazırla"></textarea>
+    <button onclick="createPetition()">Hazırla</button>
+    <div id="petitionOutput"></div>
+  </div>
+
+  <!-- Belge Özetleme -->
+  <div class="box">
+    <h2>📂 Belge Yükle & Özetle</h2>
+    <input type="file" id="fileInput" />
+    <button onclick="summarizeFile()">Özet Çıkar</button>
+    <div id="summaryOutput"></div>
+  </div>
+
+  <script>
+    const BASE_URL = "https://hukuk-asistani.onrender.com";
+
+    async function createPetition() {
+      let prompt = document.getElementById("petitionInput").value;
+      let res = await fetch(`${BASE_URL}/petition`, {
+        method: "POST",
+        body: new URLSearchParams({ prompt }),
+      });
+      let data = await res.json();
+      document.getElementById("petitionOutput").innerHTML = `<div id="output">${data.draft}</div>`;
+    }
+
+    async function summarizeFile() {
+      let file = document.getElementById("fileInput").files[0];
+      let formData = new FormData();
+      formData.append("file", file);
+
+      let res = await fetch(`${BASE_URL}/summarize`, {
+        method: "POST",
+        body: formData
+      });
+      let data = await res.json();
+      document.getElementById("summaryOutput").innerHTML = `<div id="output">${data.summary}</div>`;
+    }
+  </script>
+</body>
+</html>
