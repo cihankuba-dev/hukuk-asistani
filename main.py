@@ -1,4 +1,6 @@
 import os
+import io
+import json
 import tempfile
 import faiss
 import pickle
@@ -11,13 +13,14 @@ import openpyxl
 from pptx import Presentation
 
 # Google Drive
-from pydrive2.auth import GoogleAuth
-from pydrive2.drive import GoogleDrive
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 
 # OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# FAISS index (hafıza için)
+# FAISS index
 INDEX_FILE = "faiss_index.pkl"
 dimension = 1536
 if os.path.exists(INDEX_FILE):
@@ -29,7 +32,6 @@ else:
 
 # FastAPI
 app = FastAPI(title="⚖️ Hukuk Asistanı")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -38,7 +40,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🔹 Yardımcı Fonksiyon: Dosya Metni Çıkarma
+# -------------------
+# Yardımcı Fonksiyonlar
+# -------------------
+
 def extract_text_from_path(path, filename):
     ext = filename.split(".")[-1].lower()
     text = ""
@@ -61,24 +66,13 @@ def extract_text_from_path(path, filename):
                 for shape in slide.shapes:
                     if hasattr(shape, "text"):
                         text += shape.text + "\n"
-        elif ext in ["txt", "rtf", "md"]:
+        elif ext in ["txt", "rtf", "md", "udf"]:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 text = f.read()
     except Exception as e:
         print(f"[HATA] {filename}: {e}")
     return text.strip()
 
-def extract_text(file: UploadFile):
-    ext = file.filename.split(".")[-1].lower()
-    content = b"".join(file.file.readlines())
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-    text = extract_text_from_path(tmp_path, file.filename)
-    os.remove(tmp_path)
-    return text
-
-# 🔹 OpenAI Embedding
 def embed_text(text):
     response = client.embeddings.create(
         model="text-embedding-3-small",
@@ -86,40 +80,68 @@ def embed_text(text):
     )
     return response.data[0].embedding
 
-# 🔹 Ingest endpoint (tek dosya)
+def get_drive_service():
+    creds_dict = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
+    creds = service_account.Credentials.from_service_account_info(
+        creds_dict,
+        scopes=["https://www.googleapis.com/auth/drive.readonly"],
+    )
+    return build("drive", "v3", credentials=creds)
+
+# -------------------
+# API Endpoints
+# -------------------
+
 @app.post("/ingest")
 async def ingest(file: UploadFile):
     global index, metadata
-    text = extract_text(file)
+    ext = file.filename.split(".")[-1].lower()
+    content = b"".join(file.file.readlines())
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    text = extract_text_from_path(tmp_path, file.filename)
+    os.remove(tmp_path)
+
     chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
     for chunk in chunks:
         vector = embed_text(chunk)
         index.add([vector])
         metadata.append({"text": chunk, "file": file.filename})
+
     with open(INDEX_FILE, "wb") as f:
         pickle.dump((index, metadata), f)
     return {"status": "ok", "files_ingested": 1, "chunks_total": len(metadata)}
 
-# 🔹 Ingest Google Drive (klasör ID’den)
 @app.post("/ingest_drive")
 async def ingest_drive(folder_id: str = Form(...)):
     global index, metadata
-    gauth = GoogleAuth()
-    gauth.LocalWebserverAuth()
-    drive = GoogleDrive(gauth)
+    service = get_drive_service()
 
-    file_list = drive.ListFile({'q': f"'{folder_id}' in parents and trashed=false"}).GetList()
+    results = service.files().list(
+        q=f"'{folder_id}' in parents and trashed=false",
+        fields="files(id, name, mimeType)"
+    ).execute()
+    files = results.get("files", [])
+
     count = 0
-
-    for file in file_list:
-        fname = file['title']
+    for f in files:
+        fname = f["name"]
         ext = fname.split(".")[-1].lower()
-        if ext not in ["pdf", "docx", "xlsx", "pptx", "txt", "rtf", "md"]:
+        if ext not in ["pdf", "docx", "xlsx", "pptx", "txt", "rtf", "md", "udf"]:
             continue
-        fpath = os.path.join(tempfile.gettempdir(), fname)
-        file.GetContentFile(fpath)
-        text = extract_text_from_path(fpath, fname)
-        os.remove(fpath)
+
+        # indir
+        request = service.files().get_media(fileId=f["id"])
+        tmp_path = os.path.join(tempfile.gettempdir(), fname)
+        with open(tmp_path, "wb") as fh:
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+
+        text = extract_text_from_path(tmp_path, fname)
+        os.remove(tmp_path)
 
         chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
         for chunk in chunks:
@@ -130,10 +152,8 @@ async def ingest_drive(folder_id: str = Form(...)):
 
     with open(INDEX_FILE, "wb") as f:
         pickle.dump((index, metadata), f)
-
     return {"status": "ok", "files_ingested": count, "chunks_total": len(metadata)}
 
-# 🔹 Dilekçe hazırlama
 @app.post("/petition")
 async def petition(prompt: str = Form(...)):
     messages = [
@@ -143,10 +163,16 @@ async def petition(prompt: str = Form(...)):
     response = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
     return {"draft": response.choices[0].message.content}
 
-# 🔹 Belge özetleme
 @app.post("/summarize")
 async def summarize(file: UploadFile):
-    text = extract_text(file)
+    ext = file.filename.split(".")[-1].lower()
+    content = b"".join(file.file.readlines())
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    text = extract_text_from_path(tmp_path, file.filename)
+    os.remove(tmp_path)
+
     messages = [
         {"role": "system", "content": "Sen deneyimli bir hukuk asistanısın. Belgeleri analiz edip özet çıkar."},
         {"role": "user", "content": f"Şu belgeyi özetle: {text[:4000]}"}
@@ -154,13 +180,20 @@ async def summarize(file: UploadFile):
     response = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
     return {"summary": response.choices[0].message.content}
 
-# 🔹 Arşivden dilekçe taslağı
 @app.post("/draft_from_file")
 async def draft_from_file(file: UploadFile):
-    text = extract_text(file)
+    ext = file.filename.split(".")[-1].lower()
+    content = b"".join(file.file.readlines())
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    text = extract_text_from_path(tmp_path, file.filename)
+    os.remove(tmp_path)
+
     vector = embed_text(text)
     D, I = index.search([vector], k=5)
     context = "\n".join([metadata[i]["text"] for i in I[0] if i < len(metadata)])
+
     messages = [
         {"role": "system", "content": "Sen deneyimli bir hukuk asistanısın. Her çıktının sonuna 'Av. Mehmet Cihan KUBA' imzasını ekle."},
         {"role": "user", "content": f"Şu dosya metnine ve geçmiş arşivime göre dilekçe hazırla:\n\n{context}\n\nDosya: {text[:2000]}"}
@@ -168,7 +201,6 @@ async def draft_from_file(file: UploadFile):
     response = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
     return {"draft": response.choices[0].message.content}
 
-# 🔹 Mevzuat & içtihat arama
 @app.post("/law_search")
 async def law_search(query: str = Form(...)):
     messages = [
