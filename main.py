@@ -198,7 +198,7 @@ async def summarize(file: UploadFile):
     return {"summary": response.choices[0].message.content}
 
 @app.post("/draft_from_file")
-async def draft_from_file(file: UploadFile):
+async def draft_from_file(file: UploadFile, type: str = Form(...)):
     ext = file.filename.split(".")[-1].lower()
     content = b"".join(file.file.readlines())
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
@@ -213,7 +213,9 @@ async def draft_from_file(file: UploadFile):
 
     messages = [
         {"role": "system", "content": "Sen deneyimli bir hukuk asistanısın. Her çıktının sonuna 'Av. Mehmet Cihan KUBA' imzasını ekle."},
-        {"role": "user", "content": f"Şu dosya metnine ve geçmiş arşivime göre dilekçe hazırla:\n\n{context}\n\nDosya: {text[:2000]}"}
+        {"role": "user", "content": f"Belge türü: {type}\n\nArşivimden ve yüklediğim dosyadan faydalanarak ayrıntılı {type} hazırla.\n\n"
+                            f"Arşivden ilgili içerik:\n{context}\n\n"
+                            f"Dosya içeriği:\n{text[:2000]}"},
     ]
     response = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
     return {"draft": response.choices[0].message.content}
