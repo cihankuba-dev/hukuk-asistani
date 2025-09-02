@@ -52,6 +52,7 @@ async def root():
 # =========================
 
 async def fetch_mevzuat(query: str):
+    """mevzuat.gov.tr üzerinden kanun/madde arar"""
     url = f"https://www.mevzuat.gov.tr/arama?aranan={query}"
     async with httpx.AsyncClient() as client:
         r = await client.get(url)
@@ -60,6 +61,7 @@ async def fetch_mevzuat(query: str):
     return results[:5]
 
 async def search_ictihat(keyword: str, limit: int = 3) -> list[str]:
+    """Yargıtay karar bankasında emsal karar arar"""
     url = f"https://karararama.yargitay.gov.tr/Yargitay-Karar-Forumu?q={keyword}"
     async with httpx.AsyncClient() as client:
         resp = await client.get(url, timeout=20)
