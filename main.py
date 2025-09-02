@@ -9,6 +9,8 @@ from fastapi import FastAPI, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from PyPDF2 import PdfReader
+import httpx
+from bs4 import BeautifulSoup
 import docx
 import openpyxl
 from pptx import Presentation
@@ -33,10 +35,6 @@ else:
 
 # FastAPI
 app = FastAPI(title="⚖️ Hukuk Asistanı")
-{
-  "status": "ok",
-  "message": "⚖️ Hukuk Asistanı aktif ve çalışıyor!"
-}
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -44,12 +42,39 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "⚖️ Hukuk Asistanı aktif ve çalışıyor!"}
-# -------------------
-# Yardımcı Fonksiyonlar
-# -------------------
+
+# =========================
+# Mevzuat ve İçtihat Modülleri
+# =========================
+
+async def fetch_mevzuat(query: str):
+    url = f"https://www.mevzuat.gov.tr/arama?aranan={query}"
+    async with httpx.AsyncClient() as client:
+        r = await client.get(url)
+        soup = BeautifulSoup(r.text, "html.parser")
+        results = [a.text.strip() for a in soup.select("a")]
+    return results[:5]
+
+async def search_ictihat(keyword: str, limit: int = 3) -> list[str]:
+    url = f"https://karararama.yargitay.gov.tr/Yargitay-Karar-Forumu?q={keyword}"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, timeout=20)
+        if resp.status_code != 200:
+            return [f"Emsal karar bulunamadı ({keyword})."]
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        results = []
+        for div in soup.select("div.kararOzet")[:limit]:
+            results.append(div.get_text(strip=True))
+        return results
+
+# =========================
+# Dosya Metin Çıkarma
+# =========================
 
 def extract_text_from_path(path, filename):
     ext = filename.split(".")[-1].lower()
@@ -90,14 +115,14 @@ def embed_text(text):
 # 🔹 Google Drive servis bağlantısı
 def get_drive_service():
     creds = service_account.Credentials.from_service_account_file(
-        "credentials.json",  # Render Secret Files içine eklediğin JSON dosyası
+        "credentials.json",
         scopes=["https://www.googleapis.com/auth/drive.readonly"],
     )
     return build("drive", "v3", credentials=creds)
 
-# -------------------
+# =========================
 # API Endpoints
-# -------------------
+# =========================
 
 @app.post("/ingest")
 async def ingest(file: UploadFile):
@@ -125,7 +150,6 @@ async def ingest_drive(folder_id: str = Form(...)):
     global index, metadata
     service = get_drive_service()
 
-    # Klasördeki dosyaları listele
     results = service.files().list(
         q=f"'{folder_id}' in parents and trashed=false",
         fields="files(id, name, mimeType)"
@@ -141,7 +165,6 @@ async def ingest_drive(folder_id: str = Form(...)):
         if ext not in ["pdf", "docx", "xlsx", "pptx", "txt", "rtf", "md"]:
             continue
 
-        # Dosyayı indir
         request = service.files().get_media(fileId=file["id"])
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
@@ -154,11 +177,9 @@ async def ingest_drive(folder_id: str = Form(...)):
         with open(temp_path, "wb") as f:
             f.write(fh.read())
 
-        # Metin çıkar
         text = extract_text_from_path(temp_path, fname)
         os.remove(temp_path)
 
-        # Vektör ekle
         chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
         for chunk in chunks:
             vector = embed_text(chunk)
@@ -211,11 +232,16 @@ async def draft_from_file(file: UploadFile, type: str = Form(...)):
     D, I = index.search(np.array([vector], dtype="float32"), k=5)
     context = "\n".join([metadata[i]["text"] for i in I[0] if i < len(metadata)])
 
+    mevzuat_bilgisi = await fetch_mevzuat(type)
+    ictihatlar = await search_ictihat(type)
+
     messages = [
         {"role": "system", "content": "Sen deneyimli bir hukuk asistanısın. Her çıktının sonuna 'Av. Mehmet Cihan KUBA' imzasını ekle."},
-        {"role": "user", "content": f"Belge türü: {type}\n\nArşivimden ve yüklediğim dosyadan faydalanarak ayrıntılı {type} hazırla.\n\n"
-                            f"Arşivden ilgili içerik:\n{context}\n\n"
-                            f"Dosya içeriği:\n{text[:2000]}"},
+        {"role": "user", "content": f"Belge türü: {type}\n\nArşivimden, mevzuattan ve Yargıtay içtihatlarından faydalanarak ayrıntılı {type} hazırla.\n\n"
+                                    f"Arşivden ilgili içerik:\n{context}\n\n"
+                                    f"Mevzuat bilgisi:\n{mevzuat_bilgisi}\n\n"
+                                    f"İçtihatlar:\n{ictihatlar}\n\n"
+                                    f"Dosya içeriği:\n{text[:2000]}"},
     ]
     response = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
     return {"draft": response.choices[0].message.content}
