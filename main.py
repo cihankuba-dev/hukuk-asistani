@@ -4,6 +4,7 @@ import json
 import tempfile
 import faiss
 import pickle
+import numpy as np
 from fastapi import FastAPI, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
@@ -112,7 +113,7 @@ async def ingest(file: UploadFile):
     chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
     for chunk in chunks:
         vector = embed_text(chunk)
-        index.add([vector])
+        index.add(np.array([vector], dtype="float32"))
         metadata.append({"text": chunk, "file": file.filename})
 
     with open(INDEX_FILE, "wb") as f:
@@ -142,9 +143,16 @@ async def ingest_drive(folder_id: str = Form(...)):
 
         # Dosyayı indir
         request = service.files().get_media(fileId=file["id"])
-        temp_path = os.path.join(tempfile.gettempdir(), fname)
-        with open(temp_path, "wb") as f:
-            f.write(request.execute())
+fh = io.BytesIO()
+downloader = MediaIoBaseDownload(fh, request)
+done = False
+while not done:
+    status, done = downloader.next_chunk()
+fh.seek(0)
+
+temp_path = os.path.join(tempfile.gettempdir(), fname)
+with open(temp_path, "wb") as f:
+    f.write(fh.read())
 
         # Metin çıkar
         text = extract_text_from_path(temp_path, fname)
@@ -154,7 +162,7 @@ async def ingest_drive(folder_id: str = Form(...)):
         chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
         for chunk in chunks:
             vector = embed_text(chunk)
-            index.add([vector])
+            index.add(np.array([vector], dtype="float32"))
             metadata.append({"text": chunk, "file": fname})
         count += 1
 
@@ -200,7 +208,7 @@ async def draft_from_file(file: UploadFile):
     os.remove(tmp_path)
 
     vector = embed_text(text)
-    D, I = index.search([vector], k=5)
+    D, I = index.search(np.array([vector], dtype="float32"), k=5)
     context = "\n".join([metadata[i]["text"] for i in I[0] if i < len(metadata)])
 
     messages = [
