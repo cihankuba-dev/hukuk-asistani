@@ -245,8 +245,9 @@ async def draft_from_file(file: UploadFile, type: str = Form(...)):
         ]
         response = client.chat.completions.create(model="gpt-5-128k", messages=messages)
         return {"draft": response.choices[0].message.content}
-    except Exception as e:
-        return {"error": str(e)}
+        except Exception as e:
+        import traceback
+        return {"error": str(e), "trace": traceback.format_exc()}
 
 @app.post("/law_search")
 async def law_search(query: str = Form(...)):
