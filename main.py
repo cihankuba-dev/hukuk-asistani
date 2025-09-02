@@ -52,16 +52,14 @@ async def root():
 # =========================
 
 async def fetch_mevzuat(query: str):
-    """mevzuat.gov.tr üzerinden kanun/madde arar"""
     url = f"https://www.mevzuat.gov.tr/arama?aranan={query}"
     async with httpx.AsyncClient() as client:
-        r = await client.get(url)
+        r = await client.get(url, timeout=20)
         soup = BeautifulSoup(r.text, "html.parser")
         results = [a.text.strip() for a in soup.select("a")]
     return results[:5]
 
 async def search_ictihat(keyword: str, limit: int = 3) -> list[str]:
-    """Yargıtay karar bankasında emsal karar arar"""
     url = f"https://karararama.yargitay.gov.tr/Yargitay-Karar-Forumu?q={keyword}"
     async with httpx.AsyncClient() as client:
         resp = await client.get(url, timeout=20)
@@ -222,31 +220,34 @@ async def summarize(file: UploadFile):
 
 @app.post("/draft_from_file")
 async def draft_from_file(file: UploadFile, type: str = Form(...)):
-    ext = file.filename.split(".")[-1].lower()
-    content = b"".join(file.file.readlines())
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-    text = extract_text_from_path(tmp_path, file.filename)
-    os.remove(tmp_path)
+    try:
+        ext = file.filename.split(".")[-1].lower()
+        content = b"".join(file.file.readlines())
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        text = extract_text_from_path(tmp_path, file.filename)
+        os.remove(tmp_path)
 
-    vector = embed_text(text)
-    D, I = index.search(np.array([vector], dtype="float32"), k=5)
-    context = "\n".join([metadata[i]["text"] for i in I[0] if i < len(metadata)])
+        vector = embed_text(text)
+        D, I = index.search(np.array([vector], dtype="float32"), k=5)
+        context = "\n".join([metadata[i]["text"] for i in I[0] if i < len(metadata)])
 
-    mevzuat_bilgisi = await fetch_mevzuat(type)
-    ictihatlar = await search_ictihat(type)
+        mevzuat_bilgisi = await fetch_mevzuat(type)
+        ictihatlar = await search_ictihat(type)
 
-    messages = [
-        {"role": "system", "content": "Sen deneyimli bir hukuk asistanısın. Her çıktının sonuna 'Av. Mehmet Cihan KUBA' imzasını ekle."},
-        {"role": "user", "content": f"Belge türü: {type}\n\nArşivimden, mevzuattan ve Yargıtay içtihatlarından faydalanarak ayrıntılı {type} hazırla.\n\n"
-                                    f"Arşivden ilgili içerik:\n{context}\n\n"
-                                    f"Mevzuat bilgisi:\n{mevzuat_bilgisi}\n\n"
-                                    f"İçtihatlar:\n{ictihatlar}\n\n"
-                                    f"Dosya içeriği:\n{text[:2000]}"},
-    ]
-    response = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
-    return {"draft": response.choices[0].message.content}
+        messages = [
+            {"role": "system", "content": "Sen deneyimli bir hukuk asistanısın. Her çıktının sonuna 'Av. Mehmet Cihan KUBA' imzasını ekle."},
+            {"role": "user", "content": f"Belge türü: {type}\n\nArşivimden, mevzuattan ve Yargıtay içtihatlarından faydalanarak ayrıntılı {type} hazırla.\n\n"
+                                        f"Arşivden ilgili içerik:\n{context}\n\n"
+                                        f"Mevzuat bilgisi:\n{mevzuat_bilgisi}\n\n"
+                                        f"İçtihatlar:\n{ictihatlar}\n\n"
+                                        f"Dosya içeriği:\n{text[:2000]}"},
+        ]
+        response = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
+        return {"draft": response.choices[0].message.content}
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.post("/law_search")
 async def law_search(query: str = Form(...)):
