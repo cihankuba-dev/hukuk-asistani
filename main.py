@@ -19,6 +19,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
+import traceback
+
 # OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -125,97 +127,109 @@ def get_drive_service():
 
 @app.post("/ingest")
 async def ingest(file: UploadFile):
-    global index, metadata
-    ext = file.filename.split(".")[-1].lower()
-    content = b"".join(file.file.readlines())
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-    text = extract_text_from_path(tmp_path, file.filename)
-    os.remove(tmp_path)
-
-    chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
-    for chunk in chunks:
-        vector = embed_text(chunk)
-        index.add(np.array([vector], dtype="float32"))
-        metadata.append({"text": chunk, "file": file.filename})
-
-    with open(INDEX_FILE, "wb") as f:
-        pickle.dump((index, metadata), f)
-    return {"status": "ok", "files_ingested": 1, "chunks_total": len(metadata)}
-
-@app.post("/ingest_drive")
-async def ingest_drive(folder_id: str = Form(...)):
-    global index, metadata
-    service = get_drive_service()
-
-    results = service.files().list(
-        q=f"'{folder_id}' in parents and trashed=false",
-        fields="files(id, name, mimeType)"
-    ).execute()
-
-    files = results.get("files", [])
-    count = 0
-
-    for file in files:
-        fname = file["name"]
-        ext = fname.split(".")[-1].lower()
-
-        if ext not in ["pdf", "docx", "xlsx", "pptx", "txt", "rtf", "md"]:
-            continue
-
-        request = service.files().get_media(fileId=file["id"])
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
-        fh.seek(0)
-
-        temp_path = os.path.join(tempfile.gettempdir(), fname)
-        with open(temp_path, "wb") as f:
-            f.write(fh.read())
-
-        text = extract_text_from_path(temp_path, fname)
-        os.remove(temp_path)
+    try:
+        global index, metadata
+        ext = file.filename.split(".")[-1].lower()
+        content = b"".join(file.file.readlines())
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        text = extract_text_from_path(tmp_path, file.filename)
+        os.remove(tmp_path)
 
         chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
         for chunk in chunks:
             vector = embed_text(chunk)
             index.add(np.array([vector], dtype="float32"))
-            metadata.append({"text": chunk, "file": fname})
-        count += 1
+            metadata.append({"text": chunk, "file": file.filename})
 
-    with open(INDEX_FILE, "wb") as f:
-        pickle.dump((index, metadata), f)
+        with open(INDEX_FILE, "wb") as f:
+            pickle.dump((index, metadata), f)
+        return {"status": "ok", "files_ingested": 1, "chunks_total": len(metadata)}
+    except Exception as e:
+        return {"error": str(e), "trace": traceback.format_exc()}
 
-    return {"status": "ok", "files_ingested": count, "chunks_total": len(metadata)}
+@app.post("/ingest_drive")
+async def ingest_drive(folder_id: str = Form(...)):
+    try:
+        global index, metadata
+        service = get_drive_service()
+
+        results = service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false",
+            fields="files(id, name, mimeType)"
+        ).execute()
+
+        files = results.get("files", [])
+        count = 0
+
+        for file in files:
+            fname = file["name"]
+            ext = fname.split(".")[-1].lower()
+
+            if ext not in ["pdf", "docx", "xlsx", "pptx", "txt", "rtf", "md"]:
+                continue
+
+            request = service.files().get_media(fileId=file["id"])
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                status, done = downloader.next_chunk()
+            fh.seek(0)
+
+            temp_path = os.path.join(tempfile.gettempdir(), fname)
+            with open(temp_path, "wb") as f:
+                f.write(fh.read())
+
+            text = extract_text_from_path(temp_path, fname)
+            os.remove(temp_path)
+
+            chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
+            for chunk in chunks:
+                vector = embed_text(chunk)
+                index.add(np.array([vector], dtype="float32"))
+                metadata.append({"text": chunk, "file": fname})
+            count += 1
+
+        with open(INDEX_FILE, "wb") as f:
+            pickle.dump((index, metadata), f)
+
+        return {"status": "ok", "files_ingested": count, "chunks_total": len(metadata)}
+    except Exception as e:
+        return {"error": str(e), "trace": traceback.format_exc()}
 
 @app.post("/petition")
 async def petition(prompt: str = Form(...)):
-    messages = [
-        {"role": "system", "content": "Sen deneyimli bir Türk hukuk asistanısın. Her çıktının sonuna 'Av. Mehmet Cihan KUBA' imzasını ekle."},
-        {"role": "user", "content": prompt}
-    ]
-    response = client.chat.completions.create(model="gpt-5-128k", messages=messages)
-    return {"draft": response.choices[0].message.content}
+    try:
+        messages = [
+            {"role": "system", "content": "Sen deneyimli bir Türk hukuk asistanısın. Her çıktının sonuna 'Av. Mehmet Cihan KUBA' imzasını ekle."},
+            {"role": "user", "content": prompt}
+        ]
+        response = client.chat.completions.create(model="gpt-5-128k", messages=messages)
+        return {"draft": response.choices[0].message.content}
+    except Exception as e:
+        return {"error": str(e), "trace": traceback.format_exc()}
 
 @app.post("/summarize")
 async def summarize(file: UploadFile):
-    ext = file.filename.split(".")[-1].lower()
-    content = b"".join(file.file.readlines())
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-    text = extract_text_from_path(tmp_path, file.filename)
-    os.remove(tmp_path)
+    try:
+        ext = file.filename.split(".")[-1].lower()
+        content = b"".join(file.file.readlines())
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        text = extract_text_from_path(tmp_path, file.filename)
+        os.remove(tmp_path)
 
-    messages = [
-        {"role": "system", "content": "Sen deneyimli bir hukuk asistanısın. Belgeleri analiz edip özet çıkar."},
-        {"role": "user", "content": f"Şu belgeyi özetle: {text[:4000]}"}
-    ]
-    response = client.chat.completions.create(model="gpt-5-128k", messages=messages)
-    return {"summary": response.choices[0].message.content}
+        messages = [
+            {"role": "system", "content": "Sen deneyimli bir hukuk asistanısın. Belgeleri analiz edip özet çıkar."},
+            {"role": "user", "content": f"Şu belgeyi özetle: {text[:4000]}"}
+        ]
+        response = client.chat.completions.create(model="gpt-5-128k", messages=messages)
+        return {"summary": response.choices[0].message.content}
+    except Exception as e:
+        return {"error": str(e), "trace": traceback.format_exc()}
 
 @app.post("/draft_from_file")
 async def draft_from_file(file: UploadFile, type: str = Form(...)):
@@ -245,15 +259,17 @@ async def draft_from_file(file: UploadFile, type: str = Form(...)):
         ]
         response = client.chat.completions.create(model="gpt-5-128k", messages=messages)
         return {"draft": response.choices[0].message.content}
-        except Exception as e:
-        import traceback
+    except Exception as e:
         return {"error": str(e), "trace": traceback.format_exc()}
 
 @app.post("/law_search")
 async def law_search(query: str = Form(...)):
-    messages = [
-        {"role": "system", "content": "Sen deneyimli bir hukuk araştırma asistanısın. Güncel mevzuat ve içtihatlardan alıntılarla özet ver."},
-        {"role": "user", "content": f"{query} hakkında mevzuat ve içtihat ara."}
-    ]
-    response = client.chat.completions.create(model="gpt-5-128k", messages=messages)
-    return {"result": response.choices[0].message.content}
+    try:
+        messages = [
+            {"role": "system", "content": "Sen deneyimli bir hukuk araştırma asistanısın. Güncel mevzuat ve içtihatlardan alıntılarla özet ver."},
+            {"role": "user", "content": f"{query} hakkında mevzuat ve içtihat ara."}
+        ]
+        response = client.chat.completions.create(model="gpt-5-128k", messages=messages)
+        return {"result": response.choices[0].message.content}
+    except Exception as e:
+        return {"error": str(e), "trace": traceback.format_exc()}
