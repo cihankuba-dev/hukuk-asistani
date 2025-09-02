@@ -143,16 +143,16 @@ async def ingest_drive(folder_id: str = Form(...)):
 
         # Dosyayı indir
         request = service.files().get_media(fileId=file["id"])
-fh = io.BytesIO()
-downloader = MediaIoBaseDownload(fh, request)
-done = False
-while not done:
-    status, done = downloader.next_chunk()
-fh.seek(0)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        fh.seek(0)
 
-temp_path = os.path.join(tempfile.gettempdir(), fname)
-with open(temp_path, "wb") as f:
-    f.write(fh.read())
+        temp_path = os.path.join(tempfile.gettempdir(), fname)
+        with open(temp_path, "wb") as f:
+            f.write(fh.read())
 
         # Metin çıkar
         text = extract_text_from_path(temp_path, fname)
