@@ -147,9 +147,8 @@ def extract_text_from_path(path, filename):
 # Google Drive servis bağlantısı
 # =========================
 def get_drive_service():
-    # credentials.json dosyası proje kökünde olmalı
     creds = service_account.Credentials.from_service_account_file(
-        "credentials.json",
+        "/etc/secrets/credentials.json",   # ✅ Render'daki doğru path
         scopes=["https://www.googleapis.com/auth/drive.readonly"],
     )
     return build("drive", "v3", credentials=creds)
