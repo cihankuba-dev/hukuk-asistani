@@ -159,8 +159,10 @@ def get_drive_service():
 async def test_key():
     try:
         out = chat(
-            messages=[{"role": "user", "content": "Merhaba, sadece test ediyorum."}],
-            max_tokens=50
+            messages=[
+                {"role": "user", "content": "Bana Türk hukukunda boşanma davası açma şartlarını 3 maddede yaz."}
+            ],
+            max_tokens=150
         )
         return JSONResponse(content={"status": "ok", "response": out})
     except Exception as e:
