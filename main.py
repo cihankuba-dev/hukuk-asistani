@@ -19,10 +19,14 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
-# OpenAI client
+# =========================
+# OpenAI Client
+# =========================
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# FAISS index
+# =========================
+# FAISS Index
+# =========================
 INDEX_FILE = "faiss_index.pkl"
 dimension = 1536
 if os.path.exists(INDEX_FILE):
@@ -32,7 +36,9 @@ else:
     index = faiss.IndexFlatL2(dimension)
     metadata = []
 
-# FastAPI
+# =========================
+# FastAPI App
+# =========================
 app = FastAPI(title="⚖️ Hukuk Asistanı")
 app.add_middleware(
     CORSMiddleware,
@@ -47,9 +53,8 @@ async def root():
     return {"status": "ok", "message": "⚖️ Hukuk Asistanı aktif ve çalışıyor!"}
 
 # =========================
-# Mevzuat ve İçtihat Modülleri (güncel)
+# Mevzuat ve İçtihat Modülleri
 # =========================
-
 async def fetch_mevzuat(query: str):
     url = f"https://www.mevzuat.gov.tr/arama?aranan={query}"
     try:
@@ -80,7 +85,6 @@ async def search_ictihat(keyword: str, limit: int = 3) -> list[str]:
 # =========================
 # Dosya Metin Çıkarma
 # =========================
-
 def extract_text_from_path(path, filename):
     ext = filename.split(".")[-1].lower()
     text = ""
@@ -103,7 +107,7 @@ def extract_text_from_path(path, filename):
                 for shape in slide.shapes:
                     if hasattr(shape, "text"):
                         text += shape.text + "\n"
-        elif ext in ["txt", "rtf", "md", "udf"]:
+        elif ext in ["txt", "rtf", "md"]:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 text = f.read()
     except Exception as e:
@@ -128,7 +132,6 @@ def get_drive_service():
 # =========================
 # API Endpoints
 # =========================
-
 @app.post("/ingest")
 async def ingest(file: UploadFile):
     global index, metadata
@@ -166,7 +169,6 @@ async def ingest_drive(folder_id: str = Form(...)):
     for file in files:
         fname = file["name"]
         ext = fname.split(".")[-1].lower()
-
         if ext not in ["pdf", "docx", "xlsx", "pptx", "txt", "rtf", "md"]:
             continue
 
