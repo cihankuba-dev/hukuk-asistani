@@ -19,14 +19,10 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
-# =========================
-# OpenAI Client
-# =========================
+# OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# =========================
-# FAISS Index
-# =========================
+# FAISS index
 INDEX_FILE = "faiss_index.pkl"
 dimension = 1536
 if os.path.exists(INDEX_FILE):
@@ -36,9 +32,7 @@ else:
     index = faiss.IndexFlatL2(dimension)
     metadata = []
 
-# =========================
-# FastAPI App
-# =========================
+# FastAPI
 app = FastAPI(title="⚖️ Hukuk Asistanı")
 app.add_middleware(
     CORSMiddleware,
@@ -53,8 +47,9 @@ async def root():
     return {"status": "ok", "message": "⚖️ Hukuk Asistanı aktif ve çalışıyor!"}
 
 # =========================
-# Mevzuat ve İçtihat Modülleri
+# Mevzuat ve İçtihat Modülleri (güncel)
 # =========================
+
 async def fetch_mevzuat(query: str):
     url = f"https://www.mevzuat.gov.tr/arama?aranan={query}"
     try:
@@ -85,6 +80,7 @@ async def search_ictihat(keyword: str, limit: int = 3) -> list[str]:
 # =========================
 # Dosya Metin Çıkarma
 # =========================
+
 def extract_text_from_path(path, filename):
     ext = filename.split(".")[-1].lower()
     text = ""
@@ -107,7 +103,7 @@ def extract_text_from_path(path, filename):
                 for shape in slide.shapes:
                     if hasattr(shape, "text"):
                         text += shape.text + "\n"
-        elif ext in ["txt", "rtf", "md"]:
+        elif ext in ["txt", "rtf", "md", "udf"]:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 text = f.read()
     except Exception as e:
@@ -132,6 +128,7 @@ def get_drive_service():
 # =========================
 # API Endpoints
 # =========================
+
 @app.post("/ingest")
 async def ingest(file: UploadFile):
     global index, metadata
@@ -169,6 +166,7 @@ async def ingest_drive(folder_id: str = Form(...)):
     for file in files:
         fname = file["name"]
         ext = fname.split(".")[-1].lower()
+
         if ext not in ["pdf", "docx", "xlsx", "pptx", "txt", "rtf", "md"]:
             continue
 
@@ -228,6 +226,7 @@ async def summarize(file: UploadFile):
 @app.post("/draft_from_file")
 async def draft_from_file(file: UploadFile, type: str = Form(...)):
     try:
+        # 🔹 Dosya oku
         ext = file.filename.split(".")[-1].lower()
         content = b"".join(file.file.readlines())
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
@@ -236,23 +235,37 @@ async def draft_from_file(file: UploadFile, type: str = Form(...)):
         text = extract_text_from_path(tmp_path, file.filename)
         os.remove(tmp_path)
 
+        # 🔹 Arşivden içerik çek
         vector = embed_text(text)
         D, I = index.search(np.array([vector], dtype="float32"), k=5)
         context = "\n".join([metadata[i]["text"] for i in I[0] if i < len(metadata)])
 
+        # 🔹 Arşivden üslup örnekleri (max 3)
+        style_examples = "\n\n".join([
+            m["text"] for m in metadata 
+            if m["file"].lower().endswith((".docx", ".pdf"))
+        ][:3])
+
+        # 🔹 Mevzuat & İçtihat
         mevzuat_bilgisi = await fetch_mevzuat(type)
         ictihatlar = await search_ictihat(type)
 
+        # 🔹 Prompt
         messages = [
-            {"role": "system", "content": "Sen deneyimli bir hukuk asistanısın. Her çıktının sonuna 'Av. Mehmet Cihan KUBA' imzasını ekle."},
-            {"role": "user", "content": f"Belge türü: {type}\n\nArşivimden, mevzuattan ve Yargıtay içtihatlarından faydalanarak ayrıntılı {type} hazırla.\n\n"
+            {"role": "system", "content": "Sen deneyimli bir Türk hukuk asistanısın. "
+                                          "Her çıktının sonuna 'Av. Mehmet Cihan KUBA' imzasını ekle."},
+            {"role": "user", "content": f"Belge türü: {type}\n\n"
                                         f"Arşivden ilgili içerik:\n{context}\n\n"
                                         f"Mevzuat bilgisi:\n{mevzuat_bilgisi}\n\n"
                                         f"İçtihatlar:\n{ictihatlar}\n\n"
-                                        f"Dosya içeriği:\n{text[:2000]}"},
+                                        f"Üslup örnekleri (bunlara benzer yaz):\n{style_examples}\n\n"
+                                        f"Dosya içeriği:\n{text[:2000]}\n\n"
+                                        f"Lütfen yukarıdaki tüm bilgilerden faydalanarak ayrıntılı {type} hazırla."},
         ]
+
         response = client.chat.completions.create(model="gpt-5-128k", messages=messages)
         return {"draft": response.choices[0].message.content}
+
     except Exception as e:
         return {"error": str(e)}
 
