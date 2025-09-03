@@ -283,7 +283,7 @@ async def test_key():
         response = client.chat.completions.create(
             model="gpt-5",
             messages=[{"role": "user", "content": "Merhaba, sadece test ediyorum."}],
-            max_tokens=50
+            max_completion_tokens=50
         )
         return {"status": "ok", "response": response.choices[0].message.content}
     except Exception as e:
