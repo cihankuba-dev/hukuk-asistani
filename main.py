@@ -47,7 +47,7 @@ async def root():
     return {"status": "ok", "message": "⚖️ Hukuk Asistanı aktif ve çalışıyor!"}
 
 # =========================
-# Mevzuat ve İçtihat Modülleri (güncel)
+# Mevzuat ve İçtihat Modülleri
 # =========================
 
 async def fetch_mevzuat(query: str):
@@ -299,7 +299,7 @@ async def test_key():
     try:
         response = client.chat.completions.create(
             model="gpt-5",
-            messages=[{"role": "user", "content": "Merhaba, sadece test ediyorum."}],
+            messages=[{"role": "user", "content": "Merhaba GPT-5! Bana kısa bir test cümlesi yaz."}],
             max_completion_tokens=50
         )
         return {"status": "ok", "response": response.choices[0].message.content}
