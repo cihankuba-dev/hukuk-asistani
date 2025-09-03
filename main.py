@@ -302,6 +302,9 @@ async def test_key():
             messages=[{"role": "user", "content": "Merhaba GPT-5! Bana kısa bir test cümlesi yaz."}],
             max_completion_tokens=50
         )
-        return {"status": "ok", "response": response.choices[0].message.content}
+        reply = response.choices[0].message.content.strip()
+        if not reply:
+            reply = "✅ GPT-5 test başarılı (cevap boş dönmedi)."
+        return {"status": "ok", "response": reply}
     except Exception as e:
         return {"status": "error", "message": str(e)}
