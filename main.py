@@ -277,3 +277,14 @@ async def law_search(query: str = Form(...)):
     ]
     response = client.chat.completions.create(model="gpt-5-128k", messages=messages)
     return {"result": response.choices[0].message.content}
+@app.get("/test_key")
+async def test_key():
+    try:
+        response = client.chat.completions.create(
+            model="gpt-5-128k",
+            messages=[{"role": "user", "content": "Merhaba, sadece test ediyorum."}],
+            max_tokens=50
+        )
+        return {"status": "ok", "response": response.choices[0].message.content}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
