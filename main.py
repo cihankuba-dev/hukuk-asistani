@@ -70,13 +70,12 @@ def embed_text(text: str):
     )
     return np.array(resp.data[0].embedding, dtype="float32")
 
-def chat(messages, max_tokens=1500, temperature=0.3):
-    # OpenAI v1 – chat.completions
+def chat(messages, max_tokens=1500):
     resp = client.chat.completions.create(
         model="gpt-5",
         messages=messages,
-        max_completion_tokens=max_tokens,
-        temperature=temperature,
+        max_completion_tokens=max_tokens
+        # ❌ temperature parametresini kaldırdık
     )
     return resp.choices[0].message.content
 
