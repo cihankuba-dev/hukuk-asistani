@@ -3,12 +3,11 @@ uvicorn
 openai
 python-multipart
 python-docx
-pdfminer.six
+PyPDF2
 openpyxl
 faiss-cpu
 python-pptx
 lxml
-PyPDF2
 google-api-python-client
 google-auth
 google-auth-httplib2
