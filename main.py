@@ -75,7 +75,6 @@ def chat(messages, max_tokens=1500):
         model="gpt-5",
         messages=messages,
         max_completion_tokens=max_tokens
-        # ❌ temperature parametresini kaldırdık
     )
     return resp.choices[0].message.content
 
@@ -184,7 +183,6 @@ async def ingest(file: UploadFile):
         if not text:
             return JSONResponse(content={"status": "error", "message": "Metin çıkarılamadı."})
 
-        # 1000 karakterlik chunk'lara böl
         chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
         added = 0
         for chunk in chunks:
@@ -262,7 +260,7 @@ async def petition(prompt: str = Form(...)):
             {"role": "system", "content": "Sen deneyimli bir Türk hukuk asistanısın. Çıktının sonuna 'Av. Mehmet Cihan KUBA' imzasını ekle."},
             {"role": "user", "content": prompt}
         ]
-        out = chat(messages, max_tokens=2000, temperature=0.2)
+        out = chat(messages, max_tokens=2000)
         return JSONResponse(content={"draft": out})
     except Exception as e:
         return JSONResponse(content={"error": str(e)})
@@ -282,9 +280,9 @@ async def summarize(file: UploadFile):
 
         messages = [
             {"role": "system", "content": "Sen deneyimli bir hukuk asistanısın. Belgeleri analiz edip açık, maddeli özet çıkar."},
-            {"role": "user", "content": f"Şu belgeyi özetle:\n\n{text[:6000]}"}  # güvenli sınır
+            {"role": "user", "content": f"Şu belgeyi özetle:\n\n{text[:6000]}"} 
         ]
-        out = chat(messages, max_tokens=1000, temperature=0.2)
+        out = chat(messages, max_tokens=1000)
         return JSONResponse(content={"summary": out})
     except Exception as e:
         return JSONResponse(content={"error": str(e)})
@@ -296,7 +294,6 @@ async def draft_from_file(file: UploadFile, type: str = Form(...)):
     istenen türde taslak üretir.
     """
     try:
-        # 1) Dosya içeriği
         ext = file.filename.split(".")[-1].lower()
         content = await file.read()
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
@@ -305,7 +302,6 @@ async def draft_from_file(file: UploadFile, type: str = Form(...)):
         text = extract_text_from_path(tmp_path, file.filename)
         os.remove(tmp_path)
 
-        # 2) Arşiv: benzer içerik
         vec = embed_text(text)
         k = min(5, index.ntotal) if index.ntotal > 0 else 0
         context = ""
@@ -313,16 +309,13 @@ async def draft_from_file(file: UploadFile, type: str = Form(...)):
             D, I = index.search(np.array([vec], dtype="float32"), k=k)
             context = "\n".join([metadata[i]["text"] for i in I[0] if i < len(metadata)])
 
-        # 3) Arşiv: üslup örnekleri (max 3 – .pdf/.docx’ten gelenler)
         style_examples = "\n\n".join(
             [m["text"] for m in metadata if m["file"].lower().endswith((".docx", ".pdf"))][:3]
         )
 
-        # 4) Mevzuat & İçtihat
         mevzuat_bilgisi = await fetch_mevzuat(type)
         ictihatlar = await search_ictihat(type)
 
-        # 5) Prompt
         messages = [
             {"role": "system", "content": "Sen deneyimli bir Türk hukuk asistanısın. Üslup resmi ve tutarlı olsun. Sonuna 'Av. Mehmet Cihan KUBA' imzası ekle."},
             {"role": "user", "content":
@@ -332,11 +325,10 @@ async def draft_from_file(file: UploadFile, type: str = Form(...)):
                 f"İçtihat özetleri (ham arama sonuçları):\n{ictihatlar}\n\n"
                 f"Üslup örnekleri (bunlara benzer yaz):\n{style_examples}\n\n"
                 f"Dosya içeriği (ham metin):\n{text[:4000]}\n\n"
-                f"Lütfen yukarıdaki tüm bilgilerden faydalanarak ayrıntılı bir {type} taslağı hazırla. "
-                f"Kaynakları doğrudan link verme; metin içinde mevzuat/karar atıf biçiminde an ve sonunda kısa madde madde özet ver."}
+                f"Lütfen yukarıdaki tüm bilgilerden faydalanarak ayrıntılı bir {type} taslağı hazırla. "}
         ]
 
-        out = chat(messages, max_tokens=3000, temperature=0.2)
+        out = chat(messages, max_tokens=3000)
         return JSONResponse(content={"draft": out})
     except Exception as e:
         return JSONResponse(content={"error": str(e)})
@@ -352,7 +344,7 @@ async def law_search(query: str = Form(...)):
             {"role": "system", "content": "Sen deneyimli bir hukuk araştırma asistanısın. Güncel mevzuat ve içtihatlardan alıntılarla kısa özet ver; belirsizlik varsa açıkça belirt."},
             {"role": "user", "content": f"Sorgu: {query}\n\nMevzuat ham sonuçlar: {mevzuat_bilgisi}\n\nİçtihat ham sonuçlar: {ictihatlar}\n\nBunları derle ve kısa bir özet/yorum üret."}
         ]
-        out = chat(messages, max_tokens=1500, temperature=0.2)
+        out = chat(messages, max_tokens=1500)
         return JSONResponse(content={"result": out, "mevzuat_raw": mevzuat_bilgisi, "ictihat_raw": ictihatlar})
     except Exception as e:
         return JSONResponse(content={"error": str(e)})
