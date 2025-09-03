@@ -203,7 +203,11 @@ async def petition(prompt: str = Form(...)):
         {"role": "system", "content": "Sen deneyimli bir Türk hukuk asistanısın. Her çıktının sonuna 'Av. Mehmet Cihan KUBA' imzasını ekle."},
         {"role": "user", "content": prompt}
     ]
-    response = client.chat.completions.create(model="gpt-5", messages=messages)
+    response = client.chat.completions.create(
+        model="gpt-5",
+        messages=messages,
+        max_completion_tokens=2000
+    )
     return {"draft": response.choices[0].message.content}
 
 @app.post("/summarize")
@@ -220,7 +224,11 @@ async def summarize(file: UploadFile):
         {"role": "system", "content": "Sen deneyimli bir hukuk asistanısın. Belgeleri analiz edip özet çıkar."},
         {"role": "user", "content": f"Şu belgeyi özetle: {text[:4000]}"}
     ]
-    response = client.chat.completions.create(model="gpt-5", messages=messages)
+    response = client.chat.completions.create(
+        model="gpt-5",
+        messages=messages,
+        max_completion_tokens=1000
+    )
     return {"summary": response.choices[0].message.content}
 
 @app.post("/draft_from_file")
@@ -263,7 +271,11 @@ async def draft_from_file(file: UploadFile, type: str = Form(...)):
                                         f"Lütfen yukarıdaki tüm bilgilerden faydalanarak ayrıntılı {type} hazırla."},
         ]
 
-        response = client.chat.completions.create(model="gpt-5", messages=messages)
+        response = client.chat.completions.create(
+            model="gpt-5",
+            messages=messages,
+            max_completion_tokens=3000
+        )
         return {"draft": response.choices[0].message.content}
 
     except Exception as e:
@@ -275,8 +287,13 @@ async def law_search(query: str = Form(...)):
         {"role": "system", "content": "Sen deneyimli bir hukuk araştırma asistanısın. Güncel mevzuat ve içtihatlardan alıntılarla özet ver."},
         {"role": "user", "content": f"{query} hakkında mevzuat ve içtihat ara."}
     ]
-    response = client.chat.completions.create(model="gpt-5", messages=messages)
+    response = client.chat.completions.create(
+        model="gpt-5",
+        messages=messages,
+        max_completion_tokens=1500
+    )
     return {"result": response.choices[0].message.content}
+
 @app.get("/test_key")
 async def test_key():
     try:
