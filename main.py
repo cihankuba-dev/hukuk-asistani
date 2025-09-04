@@ -225,9 +225,10 @@ async def ingest_drive(folder_id: str = Form(...)):
     try:
         service = get_drive_service()
         results = service.files().list(
-            q=f"'{folder_id}' in parents and trashed=false",
-            fields="files(id, name, mimeType)"
-        ).execute()
+    q=f"'{folder_id}' in parents and trashed=false",
+    fields="nextPageToken, files(id, name, mimeType)",
+    pageSize=1000
+).execute()
 
         files = results.get("files", [])
         count_files, count_chunks = 0, 0
