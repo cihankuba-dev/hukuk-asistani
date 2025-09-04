@@ -16,6 +16,9 @@ from bs4 import BeautifulSoup
 import docx
 import openpyxl
 from pptx import Presentation
+import pytesseract
+from pdf2image import convert_from_path
+from PIL import Image
 
 # Google Drive (opsiyonel – credentials.json yoksa ingest_drive çalışmaz)
 from google.oauth2 import service_account
@@ -116,10 +119,21 @@ def extract_text_from_path(path, filename):
     try:
         if ext == "pdf":
             reader = PdfReader(path)
-            text = "\n".join([(page.extract_text() or "") for page in reader.pages])
+            raw_text = "\n".join([(page.extract_text() or "") for page in reader.pages])
+            if raw_text.strip():
+                text = raw_text
+            else:
+                # OCR fallback (tarama PDF için)
+                images = convert_from_path(path)
+                ocr_text = []
+                for img in images:
+                    ocr_text.append(pytesseract.image_to_string(img, lang="tur"))
+                text = "\n".join(ocr_text)
+
         elif ext == "docx":
             doc = docx.Document(path)
             text = "\n".join([p.text for p in doc.paragraphs])
+
         elif ext == "xlsx":
             wb = openpyxl.load_workbook(path, data_only=True)
             for sheet in wb.sheetnames:
@@ -128,17 +142,21 @@ def extract_text_from_path(path, filename):
                     row_txt = " ".join([str(cell) for cell in row if cell is not None]).strip()
                     if row_txt:
                         text += row_txt + "\n"
+
         elif ext == "pptx":
             prs = Presentation(path)
             for slide in prs.slides:
                 for shape in slide.shapes:
                     if hasattr(shape, "text") and shape.text:
                         text += shape.text + "\n"
+
         elif ext in ["txt", "rtf", "md", "udf"]:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 text = f.read()
+
     except Exception as e:
         print(f"[HATA] {filename}: {e}")
+
     return (text or "").strip()
 
 # =========================
