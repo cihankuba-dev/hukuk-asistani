@@ -153,7 +153,7 @@ def extract_text_from_path(path, filename):
         elif ext in ["txt", "rtf", "md", "udf"]:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 text = f.read()
-
+                
     except Exception as e:
         print(f"[HATA] {filename}: {e}")
 
